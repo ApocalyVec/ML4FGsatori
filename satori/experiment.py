@@ -278,6 +278,17 @@ def run_experiment(device, arg_space, params):
     saved_model_dir = output_dir+'/Saved_Model'
     if not os.path.exists(saved_model_dir):
         os.makedirs(saved_model_dir)
+
+    history = {}
+    history['train_aucs'] = []
+    history['train_losses'] = []
+    history['val_aucs'] = []
+    history['val_losses'] = []
+    train_losses = []
+
+    train_auc = []
+    train_losses = []
+
     ##-------Main train/test loop----------##
     if arg_space.mode == 'train':
         best_valid_loss = np.inf
@@ -289,6 +300,10 @@ def run_experiment(device, arg_space, params):
                 res_train = trainRegularMC(net, device, train_loader, optimizer, criterion)
             res_train_auc = np.asarray(res_train[1]).mean()
             res_train_loss = res_train[0]
+
+            history['train_aucs'].append(res_train_auc)
+            history['train_losses'].append(res_train_loss)
+
             if arg_space.verbose:
                 print("Train Results (Loss and AUC): ", res_train_loss, res_train_auc)
             if num_labels == 2:
@@ -302,7 +317,11 @@ def run_experiment(device, arg_space, params):
                                         storePAttn = False, getCNN = False,
                                         storeCNNout = False, getSeqs = False) #evaluateRegular(net,valid_loader,criterion)
                 res_valid_loss = res_valid[0]
-                res_valid_auc = np.mean(res_valid[1])  
+                res_valid_auc = np.mean(res_valid[1])
+
+                history['valid_aucs'].append(res_valid_loss)
+                history['valid_losses'].append(res_valid_auc)
+
             if res_valid_loss < best_valid_loss:
                 best_valid_loss = res_valid_loss
                 best_valid_auc = res_valid_auc
@@ -367,7 +386,8 @@ def run_experiment(device, arg_space, params):
                 'output_dir': output_dir,
                 'net': net,
                 'optimizer': optimizer,
-                'saved_model_dir': saved_model_dir
+                'saved_model_dir': saved_model_dir,
+                'history': history
                }
     return res_blob
 

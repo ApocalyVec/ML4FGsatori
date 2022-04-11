@@ -126,16 +126,20 @@ def main():
 
     # plot the training history
     plt.plot(experiment_blob['history']['train_aucs'], label='Train AUC')
-    plt.plot(experiment_blob['history']['val_aucs'], label='Validation AUC')
+    plt.plot(experiment_blob['history']['valid_aucs'], label='Validation AUC')
     plt.xlabel('Epochs')
     plt.ylabel('AUC')
-    plt.show()
+    plt.legend()
+    plt.savefig('figures/baseline TAL-GATA training history')
+    plt.clf()
 
     plt.plot(experiment_blob['history']['train_losses'], label='Train Loss')
-    plt.plot(experiment_blob['history']['val_losses'], label='Validation Loss')
+    plt.plot(experiment_blob['history']['valid_losses'], label='Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
-    plt.show()
+    plt.legend()
+    plt.savefig('figures/baseline TAL-GATA validation history')
+    plt.clf()
 
     if arg_space.motifAnalysis:
         motif_dir_pos, _ = motif_analysis(test_resBlob, CNNWeights, arg_space, params_dict)

@@ -282,8 +282,8 @@ def run_experiment(device, arg_space, params):
     history = {}
     history['train_aucs'] = []
     history['train_losses'] = []
-    history['val_aucs'] = []
-    history['val_losses'] = []
+    history['valid_aucs'] = []
+    history['valid_losses'] = []
     train_losses = []
 
     train_auc = []
@@ -319,8 +319,8 @@ def run_experiment(device, arg_space, params):
                 res_valid_loss = res_valid[0]
                 res_valid_auc = np.mean(res_valid[1])
 
-                history['valid_aucs'].append(res_valid_loss)
-                history['valid_losses'].append(res_valid_auc)
+            history['valid_aucs'].append(res_valid_auc)
+            history['valid_losses'].append(res_valid_loss)
 
             if res_valid_loss < best_valid_loss:
                 best_valid_loss = res_valid_loss

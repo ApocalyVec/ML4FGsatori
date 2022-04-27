@@ -94,6 +94,7 @@ class DatasetLazyLoad(Dataset):
         self.df_seq_final = self.df_seq_all
         self.df = self.df.reset_index()
         self.df_seq_final = self.df_seq_final.reset_index()
+        pass
         #self.df['header'] = self.df.apply(lambda x: '>'+x[0]+':'+str(x[1])+'-'+str(x[2])+'('+x[5]+')', axis=1)
         
     def __len__(self):

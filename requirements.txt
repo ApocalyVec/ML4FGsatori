@@ -10,3 +10,4 @@ seaborn
 statsmodels
 torch
 h5py
+tqdm

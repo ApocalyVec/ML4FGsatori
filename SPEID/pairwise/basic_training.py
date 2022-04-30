@@ -45,7 +45,7 @@ for cell_line in cell_lines:
   model.summary()
 
   
-  # Define custom callback that prints/plots performance at end of each epoch
+  # Define BetaVAEClassifier callback that prints/plots performance at end of each epoch
   class ConfusionMatrix(Callback):
       def on_train_begin(self, logs = {}):
           self.epoch = 0

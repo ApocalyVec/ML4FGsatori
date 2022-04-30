@@ -5,7 +5,7 @@ import warnings
 from torch import nn
 from torch.utils.data import DataLoader
 
-from custom.BetaVAE import BetaVAE_H, BetaVAE_B
+from BetaVAEClassifier.BetaVAE import BetaVAE_H, BetaVAE_B
 
 warnings.filterwarnings("ignore")
 

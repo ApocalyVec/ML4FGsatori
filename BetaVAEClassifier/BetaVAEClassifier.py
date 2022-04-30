@@ -2,8 +2,8 @@
 import numpy as np
 from torch.utils.data import DataLoader
 
-from custom.EPIDataset import EPIDataset
-from custom.TrainBetaVAE import Solver
+from BetaVAEClassifier.EPIDataset import EPIDataset
+from BetaVAEClassifier.TrainBetaVAE import Solver
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
 import h5py
@@ -54,7 +54,7 @@ for cell_line in cell_lines:
     #
     # model.summary()
 
-    # # Define custom callback that prints/plots performance at end of each epoch
+    # # Define BetaVAEClassifier callback that prints/plots performance at end of each epoch
     # class ConfusionMatrix(Callback):
     #     def on_train_begin(self, logs={}):
     #         self.epoch = 0

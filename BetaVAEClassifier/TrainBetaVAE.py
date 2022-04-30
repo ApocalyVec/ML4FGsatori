@@ -6,7 +6,7 @@ import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 
-from BetaVAEClassifier.BetaVAE import BetaVAE_H, BetaVAE_B
+from BetaVAEClassifier.BetaVAE import BetaVAE_H, BetaVAE_B, InteractionBinaryClassifier
 
 warnings.filterwarnings("ignore")
 
@@ -99,6 +99,8 @@ class Solver(object):
 
         self.net_1: nn.Module = net(z_dim=self.z_dim, input_length=self.x_1_length).to(self.device)
         self.optim_1 = optim.Adam(self.net_1.parameters(), lr=self.lr)
+
+        # self.classifier = InteractionBinaryClassifier(2 * self.z_dim)
 
     def train(self):
         recon_losses_0 = []

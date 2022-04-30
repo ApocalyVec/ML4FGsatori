@@ -1,5 +1,6 @@
 # Basic python and data processing imports
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 
 from BetaVAEClassifier.EPIDataset import EPIDataset
@@ -42,8 +43,11 @@ use_cuda = True
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
     data_loader = DataLoader(dataset, batch_size=512, shuffle=True)
-    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=100)
+    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=1)
     a = solver.train()
+
+    torch.save(solver.net_0.state_dict(), 'BetaVAEClassifier/models/net_0_{}'.format(cell_line))
+    torch.save(solver.net_1.state_dict(), 'BetaVAEClassifier/models/net_1_{}'.format(cell_line))
 
     break
     # model = bm.build_model(use_JASPAR=False)

@@ -9,3 +9,4 @@ scipy
 seaborn
 statsmodels
 torch
+h5py

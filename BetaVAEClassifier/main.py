@@ -41,11 +41,11 @@ use_cuda = True
 
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
-    data_loader = DataLoader(dataset, batch_size=4, shuffle=True)
-    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=1e2)
-    solver.train()
+    data_loader = DataLoader(dataset, batch_size=512, shuffle=True)
+    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=100)
+    a = solver.train()
 
-    pass
+    break
     # model = bm.build_model(use_JASPAR=False)
     #
     # model.compile(loss='binary_crossentropy',

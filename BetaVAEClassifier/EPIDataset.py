@@ -27,7 +27,7 @@ class EPIDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        return (self.X_enhancers[idx],  self.X_promoters[idx]), self.labels[idx]
+        return self.X_enhancers[idx],  self.X_promoters[idx], self.labels[idx]
 
     def get_input_length(self):
         return self.X_enhancers.shape[2]

@@ -1,7 +1,8 @@
 """solver.py"""
-
+import math
 import warnings
 
+import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 
@@ -73,7 +74,6 @@ class Solver(object):
     def __init__(self, **kwargs):
         self.device = 'cuda' if kwargs['use_cuda'] and torch.cuda.is_available() else 'cpu'
         self.max_iter = kwargs['max_iter']
-        self.global_iter = 0
 
         self.z_dim = kwargs['z_dim']
         self.beta = kwargs['beta']
@@ -84,7 +84,6 @@ class Solver(object):
 
         self.decoder_dist = 'gaussian'
 
-        self.x_length = self.data_loader.dataset[0][0][0].shape[-1]
         if kwargs['model'] == 'H':
             net = BetaVAE_H
         elif kwargs['model'] == 'B':
@@ -92,38 +91,74 @@ class Solver(object):
         else:
             raise NotImplementedError('only support model H or B')
 
-        self.net: nn.Module = net(z_dim=self.z_dim, input_length=self.x_length).to(self.device)
-        self.optim = optim.Adam(self.net.parameters(), lr=self.lr)
+        self.x_0_length = self.data_loader.dataset[0][0].shape[-1]
+        self.x_1_length = self.data_loader.dataset[0][1].shape[-1]
+
+        self.net_0: nn.Module = net(z_dim=self.z_dim, input_length=self.x_0_length).to(self.device)
+        self.optim_0 = optim.Adam(self.net_0.parameters(), lr=self.lr)
+
+        self.net_1: nn.Module = net(z_dim=self.z_dim, input_length=self.x_1_length).to(self.device)
+        self.optim_1 = optim.Adam(self.net_1.parameters(), lr=self.lr)
 
     def train(self):
+        recon_losses_0 = []
+        total_klds_0 = []
+        recon_losses_1 = []
+        total_klds_1 = []
         self.net_mode(train=True)
         out = False
 
-        pbar = tqdm(total=self.max_iter)
-        pbar.update(self.global_iter)
-        while not out:
-            for x in self.data_loader:
-                self.global_iter += 1
+        for epoch in range(self.max_iter):
+            mini_batch_i = 0
+            pbar = tqdm(total=math.ceil(len(self.data_loader.dataset) / self.data_loader.batch_size),
+                        desc='Training β-VAE')
+            pbar.update(mini_batch_i)
+            batch_recon_losses_0 = []
+            batch_total_klds_0 = []
+            batch_recon_losses_1 = []
+            batch_total_klds_1 = []
+
+            for x_0, x_1, y in self.data_loader:
+                mini_batch_i += 1
                 pbar.update(1)
 
-                x_recon, mu, logvar = self.net(x[0][0])
-                recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
-                total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+                # enhancer VAE
+                x_0_recon, mu_0, logvar_0 = self.net_0(x_0)
+                recon_loss_0 = reconstruction_loss(x_0, x_0_recon, self.decoder_dist)
+                total_kld_0, dim_wise_kld_0, mean_kld_0 = kl_divergence(mu_0, logvar_0)
+                beta_vae_loss_0 = recon_loss_0 + self.beta * total_kld_0
 
-                if self.objective == 'H':
-                    beta_vae_loss = recon_loss + self.beta*total_kld
-                else:
-                    raise NotImplementedError
+                self.optim_0.zero_grad()
+                beta_vae_loss_0.backward()
+                self.optim_0.step()
 
-                self.optim.zero_grad()
-                beta_vae_loss.backward()
-                self.optim.step()
+                # promotor VAE
+                x_1_recon, mu_1, logvar_1 = self.net_1(x_1)
+                recon_loss_1 = reconstruction_loss(x_1, x_1_recon, self.decoder_dist)
+                total_kld_1, dim_wise_kld_1, mean_kld_1 = kl_divergence(mu_1, logvar_1)
+                beta_vae_loss_1 = recon_loss_1 + self.beta * total_kld_1
 
-                pbar.write('[{}] recon_loss:{:.3f} total_kld:{:.3f} mean_kld:{:.3f}'.format(
-                    self.global_iter, recon_loss.data[0], total_kld.data[0], mean_kld.data[0]))
+                self.optim_1.zero_grad()
+                beta_vae_loss_1.backward()
+                self.optim_1.step()
 
-        pbar.write("[Training Finished]")
-        pbar.close()
+                pbar.set_description('[{}] Enhancer: recon_loss:{:.3f} total_kld:{:.5f} , Promoter: recon_loss:{:.3f} total_kld:{:.5f}'.format(
+                    mini_batch_i, recon_loss_0.item(), total_kld_0.item(), recon_loss_1.item(), total_kld_1.item()))
+                batch_recon_losses_0.append(recon_loss_0.item())
+                batch_total_klds_0.append(total_kld_0.item())
+                batch_recon_losses_1.append(recon_loss_1.item())
+                batch_total_klds_1.append(total_kld_1.item())
+
+            recon_losses_0.append(np.mean(batch_recon_losses_0))
+            total_klds_0.append(np.mean(batch_total_klds_0))
+            recon_losses_1.append(np.mean(batch_recon_losses_1))
+            total_klds_1.append(np.mean(batch_total_klds_1))
+
+            print("Epoch {} - Enhancer: recon loss={:.3f}, total KLD={:.5f} , Promoter: recon loss={:.3f}, "
+                  "total KLD={:.5f}".format(epoch, np.mean(batch_recon_losses_0), np.mean(batch_total_klds_0),
+                                            np.mean(batch_recon_losses_1), np.mean(batch_total_klds_1)))
+            pbar.close()
+        return recon_losses_0, total_klds_0, recon_losses_1, total_klds_1
 
 
     def viz_traverse(self, limit=3, inter=2/3, loc=-1):
@@ -184,14 +219,14 @@ class Solver(object):
                     samples.append(sample)
                     gifs.append(sample)
             samples = torch.cat(samples, dim=0).cpu()
-            title = '{}_latent_traversal(iter:{})'.format(key, self.global_iter)
+            title = '{}_latent_traversal(iter:{})'.format(key, self.mini_batch_i)
 
             if self.viz_on:
                 self.viz.images(samples, env=self.viz_name+'_traverse',
                                 opts=dict(title=title), nrow=len(interpolation))
 
         if self.save_output:
-            output_dir = os.path.join(self.output_dir, str(self.global_iter))
+            output_dir = os.path.join(self.output_dir, str(self.mini_batch_i))
             os.makedirs(output_dir, exist_ok=True)
             gifs = torch.cat(gifs)
             gifs = gifs.view(len(Z), self.z_dim, len(interpolation), self.nc, 64, 64).transpose(1, 2)
@@ -211,9 +246,11 @@ class Solver(object):
             raise('Only bool type is supported. True or False')
 
         if train:
-            self.net.train()
+            self.net_0.train()
+            self.net_1.train()
         else:
-            self.net.eval()
+            self.net_0.eval()
+            self.net_1.eval()
 
     def save_checkpoint(self, filename, silent=True):
         model_states = {'net':self.net.state_dict(),}
@@ -222,7 +259,7 @@ class Solver(object):
                       'kld':self.win_kld,
                       'mu':self.win_mu,
                       'var':self.win_var,}
-        states = {'iter':self.global_iter,
+        states = {'iter':self.mini_batch_i,
                   'win_states':win_states,
                   'model_states':model_states,
                   'optim_states':optim_states}
@@ -231,19 +268,19 @@ class Solver(object):
         with open(file_path, mode='wb+') as f:
             torch.save(states, f)
         if not silent:
-            print("=> saved checkpoint '{}' (iter {})".format(file_path, self.global_iter))
+            print("=> saved checkpoint '{}' (iter {})".format(file_path, self.mini_batch_i))
 
     def load_checkpoint(self, filename):
         file_path = os.path.join(self.ckpt_dir, filename)
         if os.path.isfile(file_path):
             checkpoint = torch.load(file_path)
-            self.global_iter = checkpoint['iter']
+            self.mini_batch_i = checkpoint['iter']
             self.win_recon = checkpoint['win_states']['recon']
             self.win_kld = checkpoint['win_states']['kld']
             self.win_var = checkpoint['win_states']['var']
             self.win_mu = checkpoint['win_states']['mu']
             self.net.load_state_dict(checkpoint['model_states']['net'])
             self.optim.load_state_dict(checkpoint['optim_states']['optim'])
-            print("=> loaded checkpoint '{} (iter {})'".format(file_path, self.global_iter))
+            print("=> loaded checkpoint '{} (iter {})'".format(file_path, self.mini_batch_i))
         else:
             print("=> no checkpoint found at '{}'".format(file_path))

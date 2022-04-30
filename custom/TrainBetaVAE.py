@@ -3,6 +3,7 @@
 import warnings
 
 from torch import nn
+from torch.utils.data import DataLoader
 
 from custom.BetaVAE import BetaVAE_H, BetaVAE_B
 
@@ -79,10 +80,11 @@ class Solver(object):
         self.objective = kwargs['objective']
         self.model = kwargs['model']
         self.lr = kwargs['lr']
-        self.data_loader = kwargs['data_loader']
+        self.data_loader: DataLoader = kwargs['data_loader']
 
         self.decoder_dist = 'gaussian'
 
+        self.x_length = self.data_loader.dataset[0][0][0].shape[-1]
         if kwargs['model'] == 'H':
             net = BetaVAE_H
         elif kwargs['model'] == 'B':
@@ -90,7 +92,7 @@ class Solver(object):
         else:
             raise NotImplementedError('only support model H or B')
 
-        self.net: nn.Module = net(self.z_dim).to(self.device)
+        self.net: nn.Module = net(z_dim=self.z_dim, input_length=self.x_length).to(self.device)
         self.optim = optim.Adam(self.net.parameters(), lr=self.lr)
 
     def train(self):
@@ -104,7 +106,7 @@ class Solver(object):
                 self.global_iter += 1
                 pbar.update(1)
 
-                x_recon, mu, logvar = self.net(x[0])
+                x_recon, mu, logvar = self.net(x[0][0])
                 recon_loss = reconstruction_loss(x, x_recon, self.decoder_dist)
                 total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
 

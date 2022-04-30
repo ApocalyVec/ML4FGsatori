@@ -2,7 +2,7 @@
 import numpy as np
 from torch.utils.data import DataLoader
 
-from custom.EPIDataLoader import EPIDataset
+from custom.EPIDataset import EPIDataset
 from custom.TrainBetaVAE import Solver
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
@@ -41,7 +41,7 @@ use_cuda = True
 
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    data_loader = DataLoader(dataset, batch_size=4, shuffle=True)
     solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=1e2)
     solver.train()
 

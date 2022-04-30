@@ -15,6 +15,10 @@ class EPIDataset(Dataset):
                     cell_line, len(self.X_enhancers), np.sum(self.labels == 1), np.sum(self.labels == 0), np.sum(self.labels == 1) / len(self.labels)))
             self.device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
 
+            # change the data to channel first
+            self.X_enhancers = np.moveaxis(self.X_enhancers, -1, 1)
+            self.X_promoters = np.moveaxis(self.X_promoters, -1, 1)
+
             self.X_enhancers = torch.Tensor(self.X_enhancers).to(self.device)
             self.X_promoters = torch.Tensor(self.X_promoters).to(self.device)
             self.labels = torch.Tensor(self.labels).to(self.device)
@@ -24,3 +28,6 @@ class EPIDataset(Dataset):
 
     def __getitem__(self, idx):
         return (self.X_enhancers[idx],  self.X_promoters[idx]), self.labels[idx]
+
+    def get_input_length(self):
+        return self.X_enhancers.shape[2]

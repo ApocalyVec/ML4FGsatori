@@ -84,18 +84,16 @@ class AttentionNet(nn.Module):
         return torch.matmul(p_attn, value), p_attn
 
 
-    def forward(self, input1, input2):
+    def forward(self, input_p, input_e):
 
+        #First we need to do CNN for each promoter and enhancer sequences
+        p_output = self.enhancer_conv_layer(input_p)
 
+        e_output = self.promoter_conv_layer(input_e)
 
+        # Now Merge the two layers
+        output = torch.cat([p_output, e_output], dim=1)
 
-        ## Now Merge the two layers
-        merge = torch.cat([layer_1, layer_2], dim=1)
-
-
-
-        output = self.layer1(input)
-        output = self.dropout1(output)
         output = output.permute(0,2,1)
 
         if self.useRNN:

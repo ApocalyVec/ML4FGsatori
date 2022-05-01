@@ -12,6 +12,8 @@ from tqdm import tqdm
 
 from AEClassification.EPIDataset import EPIDataset
 
+torch.manual_seed(42)
+np.seed(42)
 
 class AttentionNet(nn.Module):
     def __init__(self, device):
@@ -173,71 +175,72 @@ if __name__ == '__main__':
         optim = torch.optim.Adam(net.parameters(), lr=lr)
         criteria = torch.nn.CrossEntropyLoss()
         print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset), len(val_data_loader.dataset)))
-        for epoch in range(epochs):
-            mini_batch_i = 0
-            mini_batch_i_val = 0
+        try:
+            for epoch in range(epochs):
+                mini_batch_i = 0
+                mini_batch_i_val = 0
 
-            pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
-                        desc='Training Satori Net')
-            pbar.update(mini_batch_i)
-            batch_losses_train = []
-            batch_f1_train = []
-            net.train()
-            for input_p, input_e, y in train_data_loader:
-                mini_batch_i += 1
-                pbar.update(1)
-                y_pred = net(input_p, input_e)[0]
-
-                loss = criteria(y, y_pred)
-
-                optim.zero_grad()
-                loss.backward()
-                optim.step()
-
-                predictions = torch.argmax(y_pred, dim=1)
-                batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='macro', zero_division=1))
-
-                pbar.set_description('Training [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
-                batch_losses_train.append(loss.item())
-            train_f1s.append(np.mean(batch_f1_train))
-            train_losses.append(np.mean(batch_losses_train))
-            pbar.close()
-
-            net.eval()
-            with torch.no_grad():
-                pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
+                pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
                             desc='Training Satori Net')
-                pbar.update(mini_batch_i_val)
-                batch_losses_val = []
-                batch_f1_val = []
-                for input_p, input_e, y in val_data_loader:
-                    mini_batch_i_val += 1
+                pbar.update(mini_batch_i)
+                batch_losses_train = []
+                batch_f1_train = []
+                net.train()
+                for input_p, input_e, y in train_data_loader:
+                    mini_batch_i += 1
                     pbar.update(1)
 
                     y_pred = net(input_p, input_e)[0]
                     loss = criteria(y, y_pred)
+                    optim.zero_grad()
+                    loss.backward()
+                    optim.step()
+
                     predictions = torch.argmax(y_pred, dim=1)
-                    batch_losses_val.append(loss.item())
-                    batch_f1_val.append(
-                        f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(),
-                                 average='macro', zero_division=1))
-                    pbar.set_description('Validating [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
+                    batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='macro', zero_division=1))
 
-                val_f1s.append(np.mean(batch_f1_val))
-                val_losses.append(np.mean(batch_losses_val))
+                    pbar.set_description('Training [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
+                    batch_losses_train.append(loss.item())
+                train_f1s.append(np.mean(batch_f1_train))
+                train_losses.append(np.mean(batch_losses_train))
                 pbar.close()
-            print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), train_f1s[-1], np.mean(batch_losses_val), val_f1s[-1]))
 
-            if val_f1s[-1] > best_f1_so_far:
-                torch.save(net.state_dict(), 'models/satori_net_{}'.format(cell_line))
-                print('Best f1 improved from {} to {}, saved best model to {}'.format(best_f1_so_far, val_f1s[-1], 'models/net_{}'.format(cell_line)))
-                best_f1_so_far = val_f1s[-1]
+                net.eval()
+                with torch.no_grad():
+                    pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
+                                desc='Training Satori Net')
+                    pbar.update(mini_batch_i_val)
+                    batch_losses_val = []
+                    batch_f1_val = []
+                    for input_p, input_e, y in val_data_loader:
+                        mini_batch_i_val += 1
+                        pbar.update(1)
 
-            # Save training histories after every epoch
-            training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s,
-                                             'val_losses': val_losses, 'val_f1': val_f1s}
-            pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+                        y_pred = net(input_p, input_e)[0]
+                        loss = criteria(y, y_pred)
+                        predictions = torch.argmax(y_pred, dim=1)
+                        batch_losses_val.append(loss.item())
+                        batch_f1_val.append(
+                            f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(),
+                                     average='macro', zero_division=1))
+                        pbar.set_description('Validating [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
 
+                    val_f1s.append(np.mean(batch_f1_val))
+                    val_losses.append(np.mean(batch_losses_val))
+                    pbar.close()
+                print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), train_f1s[-1], np.mean(batch_losses_val), val_f1s[-1]))
 
+                if val_f1s[-1] > best_f1_so_far:
+                    torch.save(net.state_dict(), 'models/satori_net_{}'.format(cell_line))
+                    print('Best f1 improved from {} to {}, saved best model to {}'.format(best_f1_so_far, val_f1s[-1], 'models/net_{}'.format(cell_line)))
+                    best_f1_so_far = val_f1s[-1]
+
+                # Save training histories after every epoch
+                training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s,
+                                                 'val_losses': val_losses, 'val_f1': val_f1s}
+                pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+
+        except:
+            print('Training terminated for cell line {} because of exploding gradient'.format(cell_line))
         print('Training completed for cell line {}, training history saved'.format(cell_line))
 

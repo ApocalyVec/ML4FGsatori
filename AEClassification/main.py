@@ -55,58 +55,5 @@ for cell_line in cell_lines:
     torch.save(solver.net_1.state_dict(), 'AEClassification/models/net_{}_1_{}'.format(model, cell_line))
 
     break
-    # model = bm.build_model(use_JASPAR=False)
-    #
-    # model.compile(loss='binary_crossentropy',
-    #               optimizer=opt,
-    #               metrics=["accuracy"])
-    #
-    # model.summary()
 
-    # # Define AEClassification callback that prints/plots performance at end of each epoch
-    # class ConfusionMatrix(Callback):
-    #     def on_train_begin(self, logs={}):
-    #         self.epoch = 0
-    #         self.precisions = []
-    #         self.recalls = []
-    #         self.f1_scores = []
-    #         self.losses = []
-    #         self.training_losses = []
-    #         self.training_accs = []
-    #         self.accs = []
-    #         plt.ion()
-    #
-    #     def on_epoch_end(self, batch, logs={}):
-    #         self.training_losses.append(logs.get('loss'))
-    #         self.training_accs.append(logs.get('acc'))
-    #         self.epoch += 1
-    #         val_predict = model.predict_classes([X_enhancers, X_promoters], batch_size=batch_size, verbose=0)
-    #         util.print_live(self, labels, val_predict, logs)
-    #         if self.epoch > 1:  # need at least two time points to plot
-    #             util.plot_live(self)
-    #
-    #
-    # # print '\nlabels.mean(): ' + str(labels.mean())
-    # print
-    # 'Data sizes: '
-    # print
-    # '[X_enhancers, X_promoters]: [' + str(np.shape(X_enhancers)) + ', ' + str(np.shape(X_promoters)) + ']'
-    # print
-    # 'labels: ' + str(np.shape(labels))
-    #
-    # # Instantiate callbacks
-    # confusionMatrix = ConfusionMatrix()
-    # checkpoint_path = "/home/sss1/Desktop/projects/DeepInteractions/weights/test-delete-this-" + cell_line + "-basic-" + t + ".hdf5"
-    # checkpointer = ModelCheckpoint(filepath=checkpoint_path, verbose=1)
-    #
-    # print
-    # 'Running fully trainable model for exactly ' + str(num_epochs) + ' epochs...'
-    # model.fit([X_enhancers, X_promoters],
-    #           [labels],
-    #           # validation_data = ([X_enhancer, X_promoter], y_val),
-    #           batch_size=batch_size,
-    #           nb_epoch=num_epochs,
-    #           shuffle=True,
-    #           callbacks=[confusionMatrix, checkpointer]
-    #           )
 

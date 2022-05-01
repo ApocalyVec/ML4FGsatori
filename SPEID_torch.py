@@ -229,11 +229,11 @@ if __name__ == '__main__':
             print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), train_f1s[-1], np.mean(batch_losses_val), val_f1s[-1]))
 
             if val_f1s[-1] > best_f1_so_far:
-                torch.save(net.state_dict(), 'models/net_{}'.format(cell_line))
+                torch.save(net.state_dict(), 'models/satori_net_{}'.format(cell_line))
                 print('Best f1 improved from {} to {}, saved best model to {}'.format(best_f1_so_far, val_f1s[-1], 'models/net_{}'.format(cell_line)))
                 best_f1_so_far = val_f1s[-1]
 
         training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s, 'val_losses': val_losses, 'val_f1': val_f1s}
-        pickle.dump(training_histories, open('models/training_histories.pickle', 'wb'))
+        pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
         print('Training completed for cell line {}, training history saved'.format(cell_line))
 

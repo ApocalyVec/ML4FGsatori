@@ -46,10 +46,7 @@ class BetaVAE_H(nn.Module):
             nn.LeakyReLU(),
             nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 375
             nn.LeakyReLU(),
-            # nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,)),
-            # nn.LeakyReLU(),
-            # nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,)),
-            # nn.LeakyReLU(),
+
             View((-1, self.conv1d3_length * n_filters)),  # B, 48000
             nn.Linear(self.conv1d3_length * n_filters, z_dim*2),  # B, z_dim * 2
         )
@@ -62,16 +59,6 @@ class BetaVAE_H(nn.Module):
             nn.ConvTranspose1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 128, 1500
             nn.LeakyReLU(),
             nn.ConvTranspose1d(in_channels=n_filters, out_channels=4, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 4, 3000
-
-            # nn.ConvTranspose2d(256, 64, 4),      # B,  64,  4,  4
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B, nc, 64, 64
         )
 
         self.weight_init()

@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from AEClassification.EPIDataset import EPIDataset
-from AEClassification.TrainBetaVAE import Solver
+from AEClassification.BetaVAESolver import Solver
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
 import h5py
@@ -16,8 +16,7 @@ import h5py
 from datetime import datetime
 
 
-# model = 'AE'
-model = 'BetaVAE'
+model = 'H'
 cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
@@ -30,19 +29,7 @@ t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 
 data_path = 'data/all_sequence_data.h5'
 use_cuda = True
-# for cell_line in cell_lines:
-#     print('Loading ' + cell_line + ' data from ' + data_path)
-#     X_enhancers = None
-#     X_promoters = None
-#     labels = None
-#     with h5py.File(data_path, 'r') as hf:
-#         X_enhancers = np.array(hf.get(cell_line + '_X_enhancers')).transpose((0, 2, 1))
-#         X_promoters = np.array(hf.get(cell_line + '_X_promoters')).transpose((0, 2, 1))
-#         labels = np.array(hf.get(cell_line + 'labels'))
-#
-#     print(
-#         "Cell line {0} has {1} EP-pairs, number of positive samples is {2}, negative is {3}, percentage postive is {4}".format(
-#             cell_line, len(X_enhancers), np.sum(labels == 1), np.sum(labels == 0), np.sum(labels == 1) / len(labels)))
+
 training_histories = {}
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)

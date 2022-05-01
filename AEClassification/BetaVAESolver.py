@@ -85,10 +85,8 @@ class Solver(object):
 
         self.decoder_dist = 'gaussian'
 
-        if kwargs['model'] == 'BetaVAE':
+        if kwargs['model'] == 'H':
             net = BetaVAE_H
-        elif kwargs['model'] == 'AE':
-            net = AE
         else:
             raise NotImplementedError('only support model H or B')
 
@@ -114,7 +112,7 @@ class Solver(object):
         for epoch in range(self.max_iter):
             mini_batch_i = 0
             pbar = tqdm(total=math.ceil(len(self.data_loader.dataset) / self.data_loader.batch_size),
-                        desc='Training β-VAE')
+                        desc='Training')
             pbar.update(mini_batch_i)
             batch_recon_losses_0 = []
             batch_total_klds_0 = []

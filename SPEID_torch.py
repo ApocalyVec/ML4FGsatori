@@ -144,7 +144,7 @@ class AttentionNet(nn.Module):
 if __name__ == '__main__':
     use_cuda = True
     batch_size = 64
-    epochs = 100
+    epochs = 50
     lr = 1e-3
     train_ratio = 0.9
 

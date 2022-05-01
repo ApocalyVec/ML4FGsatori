@@ -1,8 +1,11 @@
+import h5py
+import numpy as np
 import torch
 from torch import nn
-from torch.autograd import Variable
 import math
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+
 
 class AttentionNet(nn.Module):
     def __init__(self):
@@ -21,12 +24,14 @@ class AttentionNet(nn.Module):
 
         self.RNN_hiddenSize = 100
         self.n_rnn_layers = 2
-        self.lstm_dropout = 0.4
+        self.lstm_dropout_p = 0.4
 
         self.SingleHeadSize = 32
         self.numMultiHeads = 8
         self.MultiHeadSize = 100
+        self.genPAttn = True
 
+        self.readout_strategy = 'normalize'
 
         self.batch_size=256 #batch size
         self.num_epochs=50 #number of epochs
@@ -55,9 +60,10 @@ class AttentionNet(nn.Module):
                         nn.Dropout(p=self.drop_out)
                     )
         self.lstm_layer = nn.Sequential(
-                                nn.LSTM(self.n_kernels, self.RNN_hiddenSize, num_layers=self.n_rnn_layers, bidirectional=True),
-                                nn.Dropout(p=self.lstm_dropout)
+                                nn.LSTM(self.n_kernels, self.RNN_hiddenSize, num_layers=self.n_rnn_layers, bidirectional=True)
                             )
+        self.lstm_dropout = nn.Dropout(p=self.lstm_dropout_p)
+
         self.Q = nn.ModuleList(
             [nn.Linear(in_features=2 * self.RNN_hiddenSize, out_features=self.SingleHeadSize) for i in
              range(0, self.numMultiHeads)])
@@ -88,20 +94,19 @@ class AttentionNet(nn.Module):
 
         #First we need to do CNN for each promoter and enhancer sequences
         p_output = self.enhancer_conv_layer(input_p)
-
         e_output = self.promoter_conv_layer(input_e)
 
         # Now Merge the two layers
         output = torch.cat([p_output, e_output], dim=1)
 
+        #not sure why this, but the SATORI authors
         output = output.permute(0,2,1)
 
-        if self.useRNN:
-            output, _ = self.RNN(output)
-            F_RNN = output[:,:,:self.RNN_hiddenSize]
-            R_RNN = output[:,:,self.RNN_hiddenSize:]
-            output = torch.cat((F_RNN,R_RNN),2)
-            output = self.dropoutRNN(output)
+        output, _ = self.lstm_layer(output)
+        F_RNN = output[:,:,:self.RNN_hiddenSize]
+        R_RNN = output[:,:,self.RNN_hiddenSize:]
+        output = torch.cat((F_RNN,R_RNN),2)
+        output = self.lstm_dropout(output)
 
         pAttn_concat = torch.Tensor([]).to(self.device)
         attn_concat = torch.Tensor([]).to(self.device)
@@ -109,8 +114,8 @@ class AttentionNet(nn.Module):
             query, key, value = self.Q[i](output), self.K[i](output), self.V[i](output)
             attnOut,p_attn = self.attention(query, key, value, dropout=0.2)
             attnOut = self.RELU[i](attnOut)
-            if self.usepooling:
-                attnOut = self.MAXPOOL[i](attnOut.permute(0,2,1)).permute(0,2,1)
+            # if self.usepooling:
+            #     attnOut = self.MAXPOOL[i](attnOut.permute(0,2,1)).permute(0,2,1)
             attn_concat = torch.cat((attn_concat,attnOut),dim=2)
             if self.genPAttn:
                 pAttn_concat = torch.cat((pAttn_concat, p_attn), dim=2)
@@ -128,3 +133,51 @@ class AttentionNet(nn.Module):
             return output,pAttn_concat
         else:
             return output
+
+
+class EPIDataset(Dataset):
+    def __init__(self, data_path, cell_line, use_cuda):
+        with h5py.File(data_path, 'r') as hf:
+            self.X_enhancers = np.array(hf.get(cell_line + '_X_enhancers')).transpose((0, 2, 1))
+            self.X_promoters = np.array(hf.get(cell_line + '_X_promoters')).transpose((0, 2, 1))
+            self.labels = np.array(hf.get(cell_line + 'labels'))
+            print(
+                "Cell line {0} has {1} EP-pairs, number of positive samples is {2}, negative is {3}, percentage postive is {4}".format(
+                    cell_line, len(self.X_enhancers), np.sum(self.labels == 1), np.sum(self.labels == 0), np.sum(self.labels == 1) / len(self.labels)))
+            self.device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
+
+            # change the data to channel first
+            self.X_enhancers = np.moveaxis(self.X_enhancers, -1, 1)
+            self.X_promoters = np.moveaxis(self.X_promoters, -1, 1)
+
+            self.X_enhancers = torch.Tensor(self.X_enhancers).to(self.device)
+            self.X_promoters = torch.Tensor(self.X_promoters).to(self.device)
+            self.labels = torch.Tensor(self.labels).to(self.device)
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, idx):
+        return self.X_enhancers[idx],  self.X_promoters[idx], self.labels[idx]
+
+    def get_input_length(self):
+        return self.X_enhancers.shape[2]
+
+
+if __name__ == '__main__':
+
+    use_cuda = True
+    batch_size = 512
+
+    cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+    data_path = '/data/all_sequence_data.h5'
+
+    for cell_line in cell_lines:
+        dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H',
+                        max_iter=1)
+        a = solver.train()
+
+        torch.save(solver.net_0.state_dict(), 'BetaVAEClassifier/models/net_0_{}'.format(cell_line))
+        torch.save(solver.net_1.state_dict(), 'BetaVAEClassifier/models/net_1_{}'.format(cell_line))

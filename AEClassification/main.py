@@ -16,7 +16,8 @@ import h5py
 from datetime import datetime
 
 
-model = 'AE'
+# model = 'AE'
+model = 'BetaVAE'
 cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
@@ -50,8 +51,8 @@ for cell_line in cell_lines:
     training_histories[cell_line] = solver.train()
 
     pickle.dump(training_histories, open('AEClassification/training_histories.pickle', 'wb'))
-    torch.save(solver.net_0.state_dict(), 'AEClassification/models/net_0_{}'.format(cell_line))
-    torch.save(solver.net_1.state_dict(), 'AEClassification/models/net_1_{}'.format(cell_line))
+    torch.save(solver.net_0.state_dict(), 'AEClassification/models/net_{}_0_{}'.format(model, cell_line))
+    torch.save(solver.net_1.state_dict(), 'AEClassification/models/net_{}_1_{}'.format(model, cell_line))
 
     break
     # model = bm.build_model(use_JASPAR=False)

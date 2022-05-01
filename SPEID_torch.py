@@ -1,17 +1,21 @@
 import h5py
 import numpy as np
 import torch
+from sklearn.metrics import f1_score
 from torch import nn
 import math
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
+from AEClassification.EPIDataset import EPIDataset
 
 class AttentionNet(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super(AttentionNet,self).__init__()
 
         # model parameters
+        self.device = device
         self.input_channels = 4
         self.enhancer_length = 3000 #
         self.promoter_length = 2000 #
@@ -91,16 +95,15 @@ class AttentionNet(nn.Module):
 
 
     def forward(self, input_p, input_e):
-
+        batch_size = input_p.shape[0]
         #First we need to do CNN for each promoter and enhancer sequences
         p_output = self.enhancer_conv_layer(input_p)
         e_output = self.promoter_conv_layer(input_e)
-
         # Now Merge the two layers
-        output = torch.cat([p_output, e_output], dim=1)
 
+        output = torch.cat([p_output, e_output], dim=2)
+        output = output.permute(0, 2, 1)
         #not sure why this, but the SATORI authors
-        output = output.permute(0,2,1)
 
         output, _ = self.lstm_layer(output)
         F_RNN = output[:,:,:self.RNN_hiddenSize]
@@ -128,56 +131,98 @@ class AttentionNet(nn.Module):
             output = (output-output.mean())/output.std()
 
         output = self.fc3(output)
+        output = nn.Softmax(dim=1)(output)
         assert not torch.isnan(output).any()
         if self.genPAttn:
             return output,pAttn_concat
         else:
             return output
 
-
-class EPIDataset(Dataset):
-    def __init__(self, data_path, cell_line, use_cuda):
-        with h5py.File(data_path, 'r') as hf:
-            self.X_enhancers = np.array(hf.get(cell_line + '_X_enhancers')).transpose((0, 2, 1))
-            self.X_promoters = np.array(hf.get(cell_line + '_X_promoters')).transpose((0, 2, 1))
-            self.labels = np.array(hf.get(cell_line + 'labels'))
-            print(
-                "Cell line {0} has {1} EP-pairs, number of positive samples is {2}, negative is {3}, percentage postive is {4}".format(
-                    cell_line, len(self.X_enhancers), np.sum(self.labels == 1), np.sum(self.labels == 0), np.sum(self.labels == 1) / len(self.labels)))
-            self.device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
-
-            # change the data to channel first
-            self.X_enhancers = np.moveaxis(self.X_enhancers, -1, 1)
-            self.X_promoters = np.moveaxis(self.X_promoters, -1, 1)
-
-            self.X_enhancers = torch.Tensor(self.X_enhancers).to(self.device)
-            self.X_promoters = torch.Tensor(self.X_promoters).to(self.device)
-            self.labels = torch.Tensor(self.labels).to(self.device)
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        return self.X_enhancers[idx],  self.X_promoters[idx], self.labels[idx]
-
-    def get_input_length(self):
-        return self.X_enhancers.shape[2]
-
-
 if __name__ == '__main__':
 
     use_cuda = True
-    batch_size = 512
+    batch_size = 64
+    epochs = 100
+    lr = 1e-3
+    train_ratio = 0.9
 
     cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
-    data_path = '/data/all_sequence_data.h5'
+    data_path = 'data/all_sequence_data.h5'
+
+    device= 'cuda' if use_cuda else 'cpu'
 
     for cell_line in cell_lines:
-        dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
-        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H',
-                        max_iter=1)
-        a = solver.train()
+        dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda, is_onehot_labels=True)
+        train_size = int(train_ratio * len(dataset))
+        test_size = len(dataset) - train_size
+        train_set, val_set = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-        torch.save(solver.net_0.state_dict(), 'BetaVAEClassifier/models/net_0_{}'.format(cell_line))
-        torch.save(solver.net_1.state_dict(), 'BetaVAEClassifier/models/net_1_{}'.format(cell_line))
+        train_data_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+        val_data_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+
+        losses_train = []
+        f1_train = []
+        losses_val = []
+        f1_val = []
+
+        net = AttentionNet(device).to(device)
+        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        criteria = torch.nn.CrossEntropyLoss()
+        print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset), len(val_data_loader.dataset)))
+        for epoch in range(epochs):
+            mini_batch_i = 0
+            mini_batch_i_val = 0
+
+            pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
+                        desc='Training Satori Net')
+            pbar.update(mini_batch_i)
+            batch_losses_train = []
+            batch_f1_train = []
+            net.train()
+            for input_p, input_e, y in train_data_loader:
+                mini_batch_i += 1
+                pbar.update(1)
+                y_pred = net(input_p, input_e)[0]
+
+                loss = criteria(y, y_pred)
+
+                optim.zero_grad()
+                loss.backward()
+                optim.step()
+
+                predictions = torch.argmax(y_pred, dim=1)
+                batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='binary', zero_division=1))
+
+                pbar.set_description('Training [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
+                batch_losses_train.append(loss.item())
+            f1_train.append(np.mean(batch_f1_train))
+            losses_train.append(np.mean(batch_losses_train))
+
+            pbar.close()
+
+            net.eval()
+            with torch.no_grad():
+                pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
+                            desc='Training Satori Net')
+                pbar.update(mini_batch_i_val)
+                batch_losses_val = []
+                batch_f1_val = []
+                for input_p, input_e, y in val_data_loader:
+                    mini_batch_i_val += 1
+                    pbar.update(1)
+
+                    y_pred = net(input_p, input_e)[0]
+                    loss = criteria(y, y_pred)
+                    predictions = torch.argmax(y_pred, dim=1)
+                    batch_losses_val.append(loss.item())
+                    batch_f1_val.append(
+                        f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(),
+                                 average='binary', zero_division=1))
+                    pbar.set_description('Validating [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
+
+                f1_val.append(np.mean(batch_f1_val))
+                losses_val.append(np.mean(batch_losses_val))
+
+                pbar.close()
+            print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), f1_train[-1], np.mean(batch_losses_val), f1_val[-1]))
+        break

@@ -85,7 +85,7 @@ class Solver(object):
 
         self.decoder_dist = 'gaussian'
 
-        if kwargs['model'] == 'H':
+        if kwargs['model'] == 'BetaVAE':
             net = BetaVAE_H
         elif kwargs['model'] == 'AE':
             net = AE

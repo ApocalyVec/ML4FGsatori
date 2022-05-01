@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 
 
 class EPIDataset(Dataset):
-    def __init__(self, data_path, cell_line, use_cuda):
+    def __init__(self, data_path, cell_line, use_cuda, is_onehot_labels=False):
         with h5py.File(data_path, 'r') as hf:
             self.X_enhancers = np.array(hf.get(cell_line + '_X_enhancers')).transpose((0, 2, 1))
             self.X_promoters = np.array(hf.get(cell_line + '_X_promoters')).transpose((0, 2, 1))
@@ -22,6 +22,9 @@ class EPIDataset(Dataset):
             self.X_enhancers = torch.Tensor(self.X_enhancers).to(self.device)
             self.X_promoters = torch.Tensor(self.X_promoters).to(self.device)
             self.labels = torch.Tensor(self.labels).to(self.device)
+
+            if is_onehot_labels:
+                self.labels = torch.nn.functional.one_hot(self.labels.type(torch.LongTensor), num_classes = 2).type(torch.FloatTensor).to(self.device)
 
     def __len__(self):
         return len(self.labels)

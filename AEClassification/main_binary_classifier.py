@@ -11,7 +11,7 @@ from AEClassification.EPIDataset import EPIDataset
 data_path = 'data/all_sequence_data.h5'
 device = 'cuda'
 use_cuda = True
-model_path = 'AEClassification/models/net_0_GM12878'
+model_path = 'AEClassification/models/net_BetaVAE_0_GM12878'
 cell_line  = 'GM12878'
 z_dim = 10
 

@@ -144,7 +144,7 @@ class AttentionNet(nn.Module):
 if __name__ == '__main__':
     use_cuda = True
     batch_size = 64
-    epochs = 150
+    epochs = 100
     lr = 1e-3
     train_ratio = 0.9
 
@@ -233,7 +233,11 @@ if __name__ == '__main__':
                 print('Best f1 improved from {} to {}, saved best model to {}'.format(best_f1_so_far, val_f1s[-1], 'models/net_{}'.format(cell_line)))
                 best_f1_so_far = val_f1s[-1]
 
-        training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s, 'val_losses': val_losses, 'val_f1': val_f1s}
-        pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+            # Save training histories after every epoch
+            training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s,
+                                             'val_losses': val_losses, 'val_f1': val_f1s}
+            pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+
+
         print('Training completed for cell line {}, training history saved'.format(cell_line))
 

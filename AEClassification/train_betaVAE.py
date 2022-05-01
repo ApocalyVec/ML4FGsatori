@@ -25,8 +25,8 @@ model = 'H'
 cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
-num_epochs = 32
-batch_size = 100
+num_epochs = 120
+batch_size = 256
 training_frac = 0.9  # fraction of data to use for training
 
 t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
@@ -121,9 +121,9 @@ for cell_line in cell_lines:
             pbar.close()
 
 
-        print("Epoch {} - Enhancer: recon loss={:.3f}, total KLD={:.5f} , Promoter: recon loss={:.3f}, "
-              "total KLD={:.5f}".format(epoch, np.mean(batch_recon_losses_0), np.mean(batch_total_klds_0),
-                                        np.mean(batch_recon_losses_1), np.mean(batch_total_klds_1)))
+        print("Epoch {}: train recon loss={:.5f}, train KLD={:.5f} , val recon loss={:.5f}, "
+              "val KLD={:.5f}".format(epoch, recon_losses_train[-1], total_klds_train[-1],
+                                        recon_losses_val[-1], total_klds_val[-1]))
 
         if recon_losses_val[-1] < best_loss:
             torch.save(net.state_dict(), 'AEClassification/models/net_BetaVAE_{}'.format(cell_line))

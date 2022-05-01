@@ -73,11 +73,11 @@ class BetaVAE_EP(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(int(linear_units / 2), int(linear_units / 4)),  # B, z_dim * 2
             nn.LeakyReLU(),
-            nn.Linear(self.conv1d3_length_enhancer * n_filters, z_dim * 2),  # B, z_dim * 2
+            nn.Linear(int(linear_units / 4), z_dim * 2),  # B, z_dim * 2
         )
 
         self.decoder_linear = nn.Sequential(
-            nn.Linear(z_dim, self.self.encoder_linear_input_size),  # B, 48000
+            nn.Linear(z_dim, int(linear_units / 4)),  # B, 48000
             nn.LeakyReLU(),
             nn.Linear(int(linear_units / 4), int(linear_units / 2)),
             nn.LeakyReLU(),
@@ -128,9 +128,9 @@ class BetaVAE_EP(nn.Module):
 
     def _decode(self, z):
         decode_deconv_x = self.decoder_linear(z)
-        decode_deconv_x_p, decode_deconv_x_e = decode_deconv_x[:, :, self.conv1d3_length_promoter:], decode_deconv_x[:, :, :self.conv1d3_length_enhancer]
-        recon_x_p = self.encoder_conv_promoter(decode_deconv_x_p)
-        recon_x_e = self.encoder_conv_enhancer(decode_deconv_x_e)
+        decode_deconv_x_p, decode_deconv_x_e = decode_deconv_x[:, :, :self.conv1d3_length_promoter], decode_deconv_x[:, :, self.conv1d3_length_promoter:]
+        recon_x_p = self.decoder_conv_promoter(decode_deconv_x_p)
+        recon_x_e = self.decoder_conv_enhancer(decode_deconv_x_e)
         return recon_x_p, recon_x_e
 
 

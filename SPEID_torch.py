@@ -1,3 +1,5 @@
+import pickle
+
 import h5py
 import numpy as np
 import torch
@@ -9,6 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from AEClassification.EPIDataset import EPIDataset
+
 
 class AttentionNet(nn.Module):
     def __init__(self, device):
@@ -139,10 +142,9 @@ class AttentionNet(nn.Module):
             return output
 
 if __name__ == '__main__':
-
     use_cuda = True
     batch_size = 64
-    epochs = 100
+    epochs = 150
     lr = 1e-3
     train_ratio = 0.9
 
@@ -151,7 +153,9 @@ if __name__ == '__main__':
 
     device= 'cuda' if use_cuda else 'cpu'
 
+    training_histories = {}
     for cell_line in cell_lines:
+        best_f1_so_far = 0.
         dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda, is_onehot_labels=True)
         train_size = int(train_ratio * len(dataset))
         test_size = len(dataset) - train_size
@@ -160,10 +164,10 @@ if __name__ == '__main__':
         train_data_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
         val_data_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
-        losses_train = []
-        f1_train = []
-        losses_val = []
-        f1_val = []
+        train_losses = []
+        train_f1s = []
+        val_losses = []
+        val_f1s = []
 
         net = AttentionNet(device).to(device)
         optim = torch.optim.Adam(net.parameters(), lr=lr)
@@ -191,13 +195,12 @@ if __name__ == '__main__':
                 optim.step()
 
                 predictions = torch.argmax(y_pred, dim=1)
-                batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='binary', zero_division=1))
+                batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='macro', zero_division=1))
 
                 pbar.set_description('Training [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
                 batch_losses_train.append(loss.item())
-            f1_train.append(np.mean(batch_f1_train))
-            losses_train.append(np.mean(batch_losses_train))
-
+            train_f1s.append(np.mean(batch_f1_train))
+            train_losses.append(np.mean(batch_losses_train))
             pbar.close()
 
             net.eval()
@@ -217,12 +220,20 @@ if __name__ == '__main__':
                     batch_losses_val.append(loss.item())
                     batch_f1_val.append(
                         f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(),
-                                 average='binary', zero_division=1))
+                                 average='macro', zero_division=1))
                     pbar.set_description('Validating [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
 
-                f1_val.append(np.mean(batch_f1_val))
-                losses_val.append(np.mean(batch_losses_val))
-
+                val_f1s.append(np.mean(batch_f1_val))
+                val_losses.append(np.mean(batch_losses_val))
                 pbar.close()
-            print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), f1_train[-1], np.mean(batch_losses_val), f1_val[-1]))
-        break
+            print("Epoch {} - train loss:{:.5f}, train f1:{:.3f}, val loss:{:.5f}, val f1:{:.3f}".format(epoch, np.mean(batch_losses_train), train_f1s[-1], np.mean(batch_losses_val), val_f1s[-1]))
+
+            if val_f1s[-1] > best_f1_so_far:
+                torch.save(net.state_dict(), 'models/net_{}'.format(cell_line))
+                print('Best f1 improved from {} to {}, saved best model to {}'.format(best_f1_so_far, val_f1s[-1], 'models/net_{}'.format(cell_line)))
+                best_f1_so_far = val_f1s[-1]
+
+        training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s, 'val_losses': val_losses, 'val_f1': val_f1s}
+        pickle.dump(training_histories, open('models/training_histories.pickle', 'wb'))
+        print('Training completed for cell line {}, training history saved'.format(cell_line))
+

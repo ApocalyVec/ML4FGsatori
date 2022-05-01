@@ -57,7 +57,7 @@ def print_live(conf_mat_callback, y_val, val_predict, logs):
     conf_mat_callback.precisions.append(precision)
     conf_mat_callback.recalls.append(recall)
     conf_mat_callback.f1_scores.append(f1_score)
-    conf_mat_callback.losses_train.append(loss)
+    conf_mat_callback.train_losses.append(loss)
     conf_mat_callback.accs.append(acc)
     print '\nConfusion matrix:\n' + str(conf_mat) + '\n'
     print 'Precision: ' + str(precision) + \
@@ -80,7 +80,7 @@ def plot_live(conf_mat_callback):
     recalls_plot = plt.plot(xs, conf_mat_callback.recalls, label = 'Recall')
     f1_scores_plot = plt.plot(xs, conf_mat_callback.f1_scores, label = 'F1 score')
     accs_plot = plt.plot(xs, conf_mat_callback.accs, label = 'Accuracy')
-    losses_plot = plt.plot(xs, conf_mat_callback.losses_train / max(conf_mat_callback.losses_train), label ='Loss')
+    losses_plot = plt.plot(xs, conf_mat_callback.train_losses / max(conf_mat_callback.train_losses), label ='Loss')
     batch_xs = [1 + epoch * float(i)/len(conf_mat_callback.training_losses) for i in range(len(conf_mat_callback.training_losses))]
     training_losses_plot = plt.plot(batch_xs, conf_mat_callback.training_losses / max(conf_mat_callback.training_losses), label = 'Training Loss')
     training_losses_plot = plt.plot(batch_xs, conf_mat_callback.training_accs, label = 'Training Accuracy')

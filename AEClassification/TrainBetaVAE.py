@@ -6,7 +6,8 @@ import numpy as np
 from torch import nn
 from torch.utils.data import DataLoader
 
-from BetaVAEClassifier.BetaVAE import BetaVAE_H, BetaVAE_B, InteractionBinaryClassifier
+from AEClassification.AE import AE
+from AEClassification.BetaVAE import BetaVAE_H, BetaVAE_B, InteractionBinaryClassifier
 
 warnings.filterwarnings("ignore")
 
@@ -86,8 +87,8 @@ class Solver(object):
 
         if kwargs['model'] == 'H':
             net = BetaVAE_H
-        elif kwargs['model'] == 'B':
-            net = BetaVAE_B
+        elif kwargs['model'] == 'AE':
+            net = AE
         else:
             raise NotImplementedError('only support model H or B')
 
@@ -160,7 +161,7 @@ class Solver(object):
                   "total KLD={:.5f}".format(epoch, np.mean(batch_recon_losses_0), np.mean(batch_total_klds_0),
                                             np.mean(batch_recon_losses_1), np.mean(batch_total_klds_1)))
             pbar.close()
-        return recon_losses_0, total_klds_0, recon_losses_1, total_klds_1
+        return {'recon_loss_0': recon_losses_0, 'total_klds_0': total_klds_0, 'recon_losses_1': recon_losses_1, 'total_klds_1': total_klds_1}
 
 
     def viz_traverse(self, limit=3, inter=2/3, loc=-1):

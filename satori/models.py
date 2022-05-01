@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn.parameter import Parameter # import Parameter to create BetaVAEClassifier activations with learnable parameters
+from torch.nn.parameter import Parameter # import Parameter to create AEClassification activations with learnable parameters
 
 
 class PositionalEncoding(nn.Module):

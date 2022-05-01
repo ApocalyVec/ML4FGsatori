@@ -1,10 +1,12 @@
 # Basic python and data processing imports
+import pickle
+
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from BetaVAEClassifier.EPIDataset import EPIDataset
-from BetaVAEClassifier.TrainBetaVAE import Solver
+from AEClassification.EPIDataset import EPIDataset
+from AEClassification.TrainBetaVAE import Solver
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
 import h5py
@@ -14,6 +16,7 @@ import h5py
 from datetime import datetime
 
 
+model = 'AE'
 cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
@@ -39,15 +42,16 @@ use_cuda = True
 #     print(
 #         "Cell line {0} has {1} EP-pairs, number of positive samples is {2}, negative is {3}, percentage postive is {4}".format(
 #             cell_line, len(X_enhancers), np.sum(labels == 1), np.sum(labels == 0), np.sum(labels == 1) / len(labels)))
-
+training_histories = {}
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
     data_loader = DataLoader(dataset, batch_size=512, shuffle=True)
-    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model='H', max_iter=1)
-    a = solver.train()
+    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model=model, max_iter=150)
+    training_histories[cell_line] = solver.train()
 
-    torch.save(solver.net_0.state_dict(), 'BetaVAEClassifier/models/net_0_{}'.format(cell_line))
-    torch.save(solver.net_1.state_dict(), 'BetaVAEClassifier/models/net_1_{}'.format(cell_line))
+    pickle.dump(training_histories, open('AEClassification/training_histories.pickle', 'wb'))
+    torch.save(solver.net_0.state_dict(), 'AEClassification/models/net_0_{}'.format(cell_line))
+    torch.save(solver.net_1.state_dict(), 'AEClassification/models/net_1_{}'.format(cell_line))
 
     break
     # model = bm.build_model(use_JASPAR=False)
@@ -58,7 +62,7 @@ for cell_line in cell_lines:
     #
     # model.summary()
 
-    # # Define BetaVAEClassifier callback that prints/plots performance at end of each epoch
+    # # Define AEClassification callback that prints/plots performance at end of each epoch
     # class ConfusionMatrix(Callback):
     #     def on_train_begin(self, logs={}):
     #         self.epoch = 0
@@ -104,3 +108,4 @@ for cell_line in cell_lines:
     #           shuffle=True,
     #           callbacks=[confusionMatrix, checkpointer]
     #           )
+

@@ -58,7 +58,7 @@ model.compile(loss = 'binary_crossentropy',
 # Print a summary of the model
 model.summary()
 
-# Define BetaVAEClassifier callback that prints/plots performance at end of each epoch
+# Define AEClassification callback that prints/plots performance at end of each epoch
 class ConfusionMatrix(Callback):
     def on_train_begin(self, logs = {}):
         self.epoch = 0

@@ -172,7 +172,7 @@ if __name__ == '__main__':
         val_f1s = []
 
         net = AttentionNet(device).to(device)
-        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
         criteria = torch.nn.CrossEntropyLoss()
         print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset), len(val_data_loader.dataset)))
         try:
@@ -192,9 +192,9 @@ if __name__ == '__main__':
 
                     y_pred = net(input_p, input_e)[0]
                     loss = criteria(y, y_pred)
-                    optim.zero_grad()
+                    optimizer.zero_grad()
                     loss.backward()
-                    optim.step()
+                    optimizer.step()
 
                     predictions = torch.argmax(y_pred, dim=1)
                     batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='macro', zero_division=1))

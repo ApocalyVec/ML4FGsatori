@@ -22,7 +22,8 @@ from datetime import datetime
 
 
 model = 'H'
-cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
 num_epochs = 120
@@ -40,6 +41,8 @@ z_dim = 10
 beta = 4
 lr=1e-3
 train_ratio = 0.9  # fraction of data to use for training
+l1_weight = 1e-5
+l2_weight = 1e-5
 recon_criterion = torch.nn.MSELoss()
 
 training_histories = {}
@@ -56,7 +59,7 @@ for cell_line in cell_lines:
     x_p_length, x_e_length  = train_data_loader.dataset[0][0].shape[-1], train_data_loader.dataset[0][1].shape[-1]
 
     net: nn.Module = BetaVAE_EP(promoter_input_length=x_p_length, enhancer_input_length=x_e_length, z_dim=z_dim).to(device)
-    optim = optim.Adam(net.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
 
     recon_losses_train = []
     total_klds_train = []
@@ -79,16 +82,18 @@ for cell_line in cell_lines:
             pbar.update(1)
 
             # enhancer VAE
+            l2_penalty = l2_weight * sum([(p ** 2).sum() for p in net.parameters()])
+
             x_recon_p, x_recon_e, mu, logvar = net(x_p, x_e)
             recon_loss = recon_criterion(torch.concat([x_p, x_e], dim=2), torch.concat([x_recon_p, x_recon_e], dim=2))
             total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
-            beta_vae_loss = recon_loss + beta * total_kld
+            beta_vae_loss = recon_loss + beta * total_kld + l2_penalty
 
-            optim.zero_grad()
+            optimizer.zero_grad()
             beta_vae_loss.backward()
-            optim.step()
+            optimizer.step()
 
-            pbar.set_description( 'Training [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format(  mini_batch_i_train, recon_loss.item(), total_kld.item()))
+            pbar.set_description( 'Training [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format( mini_batch_i_train, recon_loss.item(), total_kld.item()))
             batch_recon_losses.append(recon_loss.item())
             batch_total_klds.append(total_kld.item())
         recon_losses_train.append(np.mean(batch_recon_losses))

@@ -181,7 +181,7 @@ if __name__ == '__main__':
                 mini_batch_i_val = 0
 
                 pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
-                            desc='Training Satori Net')
+                            desc='Training EPI Net')
                 pbar.update(mini_batch_i)
                 batch_losses_train = []
                 batch_f1_train = []
@@ -208,7 +208,7 @@ if __name__ == '__main__':
                 net.eval()
                 with torch.no_grad():
                     pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
-                                desc='Training Satori Net')
+                                desc='Validating EPI Net')
                     pbar.update(mini_batch_i_val)
                     batch_losses_val = []
                     batch_f1_val = []
@@ -238,7 +238,7 @@ if __name__ == '__main__':
                 # Save training histories after every epoch
                 training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s,
                                                  'val_losses': val_losses, 'val_f1': val_f1s}
-                pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+                pickle.dump(training_histories, open('models/EPI_training_histories.pickle', 'wb'))
 
         except:
             print('Training terminated for cell line {} because of exploding gradient'.format(cell_line))

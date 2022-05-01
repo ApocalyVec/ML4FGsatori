@@ -1,12 +1,17 @@
 # Basic python and data processing imports
+import math
 import pickle
 
 import numpy as np
 import torch
+from torch import nn, optim
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+import torch.nn.functional as F
 
+from AEClassification.BetaVAE import BetaVAE_EP
 from AEClassification.EPIDataset import EPIDataset
-from AEClassification.BetaVAESolver import Solver
+from AEClassification.BetaVAESolver import Solver, kl_divergence
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
 import h5py
@@ -29,18 +34,113 @@ t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 
 data_path = 'data/all_sequence_data.h5'
 use_cuda = True
+device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
+epochs = 100
+z_dim = 10
+beta = 4
+lr=1e-3
+train_ratio = 0.9  # fraction of data to use for training
+recon_criterion = torch.nn.MSELoss()
 
 training_histories = {}
+
 for cell_line in cell_lines:
     dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
-    data_loader = DataLoader(dataset, batch_size=512, shuffle=True)
-    solver = Solver(data_loader=data_loader, use_cuda=use_cuda, beta=4, lr=1e-3, z_dim=10, objective='H', model=model, max_iter=150)
-    training_histories[cell_line] = solver.train()
+    train_size = int(train_ratio * len(dataset))
+    test_size = len(dataset) - train_size
+    train_set, val_set = torch.utils.data.random_split(dataset, [train_size, test_size])
 
-    pickle.dump(training_histories, open('AEClassification/training_histories.pickle', 'wb'))
-    torch.save(solver.net_0.state_dict(), 'AEClassification/models/net_{}_0_{}'.format(model, cell_line))
-    torch.save(solver.net_1.state_dict(), 'AEClassification/models/net_{}_1_{}'.format(model, cell_line))
+    train_data_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
+    val_data_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
-    break
+    x_p_length, x_e_length  = train_data_loader.dataset[0][0].shape[-1], train_data_loader.dataset[0][1].shape[-1]
+
+    net: nn.Module = BetaVAE_EP(promoter_input_length=x_p_length, enhancer_input_length=x_e_length, z_dim=z_dim).to(device)
+    optim = optim.Adam(net.parameters(), lr=lr)
+
+    recon_losses_train = []
+    total_klds_train = []
+    recon_losses_val = []
+    total_klds_val = []
+    best_loss = np.inf
+
+    for epoch in range(epochs):
+        mini_batch_i_train = 0
+        mini_batch_i_val = 0
+        pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
+                    desc='Training BetaVAE Net')
+        pbar.update(mini_batch_i_train)
+        batch_recon_losses = []
+        batch_total_klds = []
+
+        net.train()
+        for x_p, x_e, y in train_data_loader:
+            mini_batch_i_train += 1
+            pbar.update(1)
+
+            # enhancer VAE
+            x_recon_p, x_recon_e, mu, logvar = net(x_p, x_e)
+            recon_loss = recon_criterion(torch.concat([x_p, x_e], dim=2), torch.concat([x_recon_p, x_recon_e], dim=2))
+            total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+            beta_vae_loss = recon_loss + beta * total_kld
+
+            optim.zero_grad()
+            beta_vae_loss.backward()
+            optim.step()
+
+            pbar.set_description( 'Training [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format(  mini_batch_i_train, recon_loss.item(), total_kld.item()))
+            batch_recon_losses.append(recon_loss.item())
+            batch_total_klds.append(total_kld.item())
+        recon_losses_train.append(np.mean(batch_recon_losses))
+        total_klds_train.append(np.mean(batch_total_klds))
+        pbar.close()
+
+        with torch.no_grad():
+            pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
+                        desc='Validating AE Net')
+            pbar.update(mini_batch_i_val)
+            batch_recon_losses = []
+            batch_total_klds = []
+            for x_p, x_e, y in val_data_loader:
+                mini_batch_i_val += 1
+                pbar.update(1)
+
+                x_recon_p, x_recon_e, mu, logvar = net(x_p, x_e)
+                recon_loss = recon_criterion(torch.concat([x_p, x_e], dim=2),
+                                             torch.concat([x_recon_p, x_recon_e], dim=2))
+                total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
+                beta_vae_loss = recon_loss + beta * total_kld
+
+                batch_recon_losses.append(recon_loss.item())
+                batch_total_klds.append(total_kld.item())
+                pbar.set_description(
+                    'Validating [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format(mini_batch_i_train, recon_loss.item(),total_kld.item()))
+
+            recon_losses_val.append(np.mean(batch_recon_losses))
+            total_klds_val.append(np.mean(batch_total_klds))
+            pbar.close()
+
+
+        print("Epoch {} - Enhancer: recon loss={:.3f}, total KLD={:.5f} , Promoter: recon loss={:.3f}, "
+              "total KLD={:.5f}".format(epoch, np.mean(batch_recon_losses_0), np.mean(batch_total_klds_0),
+                                        np.mean(batch_recon_losses_1), np.mean(batch_total_klds_1)))
+
+        if recon_losses_val[-1] < best_loss:
+            torch.save(net.state_dict(), 'AEClassification/models/net_BetaVAE_{}'.format(cell_line))
+            print(
+                'Best BetaVAE loss improved from {} to {}, saved best model to {}'.format(best_loss, recon_losses_val[-1],
+                                                                                  'AEClassification/models/net_BetaVAE_{}'.format(
+                                                                                      cell_line)))
+            best_loss = recon_losses_val[-1]
+
+        # Save training histories after every epoch
+        training_histories[cell_line] = {'recon_loss_train': recon_losses_train, 'KLD_train': total_klds_train,
+                                         'recon_loss_val': recon_losses_val, 'KLD_val': total_klds_val}
+        pickle.dump(training_histories, open('AEClassification/models/BetaVAE_training_histories.pickle', 'wb'))
+
+    print('Training completed for cell line {}, training history saved'.format(cell_line))
+
+
+
 
 

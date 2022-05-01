@@ -22,10 +22,11 @@ from datetime import datetime
 
 model = 'AE'
 # model = 'BetaVAE'
-cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 
 # Model training parameters
-epochs = 50
+epochs = 3
 batch_size = 100
 train_ratio = 0.9  # fraction of data to use for training
 
@@ -62,7 +63,7 @@ for cell_line in cell_lines:
         mini_batch_i_val = 0
 
         pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
-                    desc='Training Satori Net')
+                    desc='Training AE Net')
         pbar.update(mini_batch_i)
         batch_losses_train = []
         net.train()
@@ -84,7 +85,7 @@ for cell_line in cell_lines:
         net.eval()
         with torch.no_grad():
             pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
-                        desc='Training Satori Net')
+                        desc='Validating AE Net')
             pbar.update(mini_batch_i_val)
             batch_losses_val = []
             for input_p, input_e, y in val_data_loader:
@@ -102,7 +103,7 @@ for cell_line in cell_lines:
             batch_losses_train), np.mean(batch_losses_val)))
 
         if np.mean(batch_losses_val) < best_loss:
-            torch.save(net.state_dict(), 'models/satori_net_{}'.format(cell_line))
+            torch.save(net.state_dict(), 'AEClassification/models/net_AE_{}'.format(cell_line))
             print('Best loss improved from {} to {}, saved best model to {}'.format(best_loss, np.mean(batch_losses_val),
                                                                                   'AEClassification/models/net_AE_{}'.format(
                                                                                       cell_line)))

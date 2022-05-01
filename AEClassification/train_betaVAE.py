@@ -23,10 +23,12 @@ from datetime import datetime
 
 model = 'H'
 # cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
-cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['HUVEC', 'IMR90', 'K562', 'NHEK']
+cell_lines = ['IMR90', 'K562', 'NHEK']
 
 # Model training parameters
-num_epochs = 120
+num_epochs = 60
 batch_size = 256
 training_frac = 0.9  # fraction of data to use for training
 
@@ -56,7 +58,7 @@ for cell_line in cell_lines:
     train_data_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_data_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
-    x_p_length, x_e_length  = train_data_loader.dataset[0][0].shape[-1], train_data_loader.dataset[0][1].shape[-1]
+    x_p_length, x_e_length = train_data_loader.dataset[0][0].shape[-1], train_data_loader.dataset[0][1].shape[-1]
 
     net: nn.Module = BetaVAE_EP(promoter_input_length=x_p_length, enhancer_input_length=x_e_length, z_dim=z_dim).to(device)
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
@@ -91,9 +93,11 @@ for cell_line in cell_lines:
 
             optimizer.zero_grad()
             beta_vae_loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)  # gradient clipping to avoid exploding gradient
             optimizer.step()
 
-            pbar.set_description( 'Training [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format( mini_batch_i_train, recon_loss.item(), total_kld.item()))
+            pbar.set_description( 'Training [{}]: recon_loss:{:.8f} total_kld:{:.8f}'.format( mini_batch_i_train, recon_loss.item(), total_kld.item()))
             batch_recon_losses.append(recon_loss.item())
             batch_total_klds.append(total_kld.item())
         recon_losses_train.append(np.mean(batch_recon_losses))
@@ -119,15 +123,15 @@ for cell_line in cell_lines:
                 batch_recon_losses.append(recon_loss.item())
                 batch_total_klds.append(total_kld.item())
                 pbar.set_description(
-                    'Validating [{}]: recon_loss:{:.5f} total_kld:{:.5f}'.format(mini_batch_i_train, recon_loss.item(),total_kld.item()))
+                    'Validating [{}]: recon_loss:{:.8f} total_kld:{:.8f}'.format(mini_batch_i_train, recon_loss.item(),total_kld.item()))
 
             recon_losses_val.append(np.mean(batch_recon_losses))
             total_klds_val.append(np.mean(batch_total_klds))
             pbar.close()
 
 
-        print("Epoch {}: train recon loss={:.5f}, train KLD={:.5f} , val recon loss={:.5f}, "
-              "val KLD={:.5f}".format(epoch, recon_losses_train[-1], total_klds_train[-1],
+        print("Epoch {}: train recon loss={:.8f}, train KLD={:.8f} , val recon loss={:.8f}, "
+              "val KLD={:.8f}".format(epoch, recon_losses_train[-1], total_klds_train[-1],
                                         recon_losses_val[-1], total_klds_val[-1]))
 
         if recon_losses_val[-1] < best_loss:

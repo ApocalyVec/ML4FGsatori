@@ -172,6 +172,7 @@ if __name__ == '__main__':
         val_f1s = []
 
         net = AttentionNet(device).to(device)
+        print('Create AttentionNet with {} parameters'.format(sum(p.numel() for p in net.parameters())))
         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
         criteria = torch.nn.CrossEntropyLoss()
         print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset), len(val_data_loader.dataset)))

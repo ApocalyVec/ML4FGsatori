@@ -13,7 +13,7 @@ from tqdm import tqdm
 from AEClassification.EPIDataset import EPIDataset
 
 torch.manual_seed(42)
-np.seed(42)
+np.random.seed(42)
 
 class AttentionNet(nn.Module):
     def __init__(self, device):

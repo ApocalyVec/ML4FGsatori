@@ -172,7 +172,8 @@ if __name__ == '__main__':
         val_f1s = []
 
         net = AttentionNet(device).to(device)
-        optim = torch.optim.Adam(net.parameters(), lr=lr)
+        print('Create AttentionNet with {} parameters'.format(sum(p.numel() for p in net.parameters())))
+        optimizer = torch.optim.Adam(net.parameters(), lr=lr)
         criteria = torch.nn.CrossEntropyLoss()
         print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset), len(val_data_loader.dataset)))
         try:
@@ -181,7 +182,7 @@ if __name__ == '__main__':
                 mini_batch_i_val = 0
 
                 pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
-                            desc='Training Satori Net')
+                            desc='Training EPI Net')
                 pbar.update(mini_batch_i)
                 batch_losses_train = []
                 batch_f1_train = []
@@ -192,9 +193,9 @@ if __name__ == '__main__':
 
                     y_pred = net(input_p, input_e)[0]
                     loss = criteria(y, y_pred)
-                    optim.zero_grad()
+                    optimizer.zero_grad()
                     loss.backward()
-                    optim.step()
+                    optimizer.step()
 
                     predictions = torch.argmax(y_pred, dim=1)
                     batch_f1_train.append(f1_score(torch.argmax(y, dim=1).detach().cpu().numpy(), predictions.detach().cpu().numpy(), average='macro', zero_division=1))
@@ -208,7 +209,7 @@ if __name__ == '__main__':
                 net.eval()
                 with torch.no_grad():
                     pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
-                                desc='Training Satori Net')
+                                desc='Validating EPI Net')
                     pbar.update(mini_batch_i_val)
                     batch_losses_val = []
                     batch_f1_val = []
@@ -238,7 +239,7 @@ if __name__ == '__main__':
                 # Save training histories after every epoch
                 training_histories[cell_line] = {'train_losss': train_losses, 'train_f1': train_f1s,
                                                  'val_losses': val_losses, 'val_f1': val_f1s}
-                pickle.dump(training_histories, open('models/satori_training_histories.pickle', 'wb'))
+                pickle.dump(training_histories, open('models/EPI_training_histories.pickle', 'wb'))
 
         except:
             print('Training terminated for cell line {} because of exploding gradient'.format(cell_line))

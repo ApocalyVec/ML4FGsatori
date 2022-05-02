@@ -5,7 +5,7 @@ import torch as torch
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader
 
-from AEClassification.BetaVAE import BetaVAE_H
+from AEClassification.BetaVAE import BetaVAE_EP
 from AEClassification.EPIDataset import EPIDataset
 
 data_path = 'data/all_sequence_data.h5'
@@ -17,7 +17,7 @@ z_dim = 10
 
 dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
 data_loader = DataLoader(dataset, batch_size=512, shuffle=True)
-vae_model = BetaVAE_H(z_dim=10, input_length=3000).to(device)
+vae_model = BetaVAE_EP(z_dim=10, input_length=3000).to(device)
 vae_model.load_state_dict(torch.load(model_path))
 vae_model.eval() # set the model to eval mode
 

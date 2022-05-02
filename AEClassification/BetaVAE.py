@@ -21,57 +21,86 @@ class View(nn.Module):
     def forward(self, tensor):
         return tensor.view(self.size)
 
+def calculate_conv_length(input_length, padding, kernel_size, stride):
+    return math.floor(((input_length + 2 * padding - (kernel_size - 1) - 1) / stride) + 1)
 
-class BetaVAE_H(nn.Module):
+
+class BetaVAE_EP(nn.Module):
     """Model proposed in original beta-VAE paper(Higgins et al, ICLR, 2017)."""
 
-    def __init__(self, input_length, z_dim=10, kernel_size = 13, n_filters=128, stride=2):
-        super(BetaVAE_H, self).__init__()
+    def __init__(self, promoter_input_length, enhancer_input_length, z_dim=10, kernel_size = 13, n_filters=256, stride=2, linear_units=1024):
+        super(BetaVAE_EP, self).__init__()
         self.z_dim = z_dim
         self.kernel_size = kernel_size
-        self.input_length = input_length
+        self.enhancer_input_length = enhancer_input_length
+        self.promoter_input_length = promoter_input_length
         self.n_filters = n_filters
         self.stride = stride
         encoder_padding = int((kernel_size - 1) / 2)  # to exactly reduce the sequence length by half after conv
-        self.conv1d1_length = math.floor(((input_length + 2 * encoder_padding - (kernel_size-1) - 1) / stride) + 1)
-        self.conv1d2_length = math.floor(((self.conv1d1_length + 2 * encoder_padding - (kernel_size-1) - 1) / stride) + 1)
-        self.conv1d3_length = math.floor(((self.conv1d2_length + 2 * encoder_padding - (kernel_size-1) - 1) / stride) + 1)
-        # self.conv1d4_length = math.floor(((self.conv1d3_length - (kernel_size-1)) / stride) + 1)
-        # self.conv1d5_length = math.floor(((self.conv1d4_length - (kernel_size-1)) / stride) + 1)
+        self.conv1d1_length_enahncer = calculate_conv_length(enhancer_input_length, encoder_padding, kernel_size, stride)
+        self.conv1d2_length_enhancer = calculate_conv_length(self.conv1d1_length_enahncer, encoder_padding, kernel_size, stride)
+        self.conv1d3_length_enhancer = calculate_conv_length(self.conv1d2_length_enhancer, encoder_padding, kernel_size, stride)
 
-        self.encoder = nn.Sequential(
+        self.conv1d1_length_promoter = calculate_conv_length(promoter_input_length, encoder_padding, kernel_size, stride)
+        self.conv1d2_length_promoter = calculate_conv_length(self.conv1d1_length_promoter, encoder_padding, kernel_size, stride)
+        self.conv1d3_length_promoter = calculate_conv_length(self.conv1d2_length_promoter, encoder_padding, kernel_size, stride)
+
+        self.encoder_linear_input_size = self.conv1d3_length_enhancer * n_filters + self.conv1d3_length_promoter * n_filters
+
+        self.encoder_conv_promoter = nn.Sequential(
+            nn.Conv1d(in_channels=4, out_channels=n_filters, kernel_size=(self.kernel_size, ), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 1000
+            nn.LeakyReLU(),
+            nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 500
+            nn.LeakyReLU(),
+            nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 150
+            nn.LeakyReLU(),
+        )
+
+        self.encoder_conv_enhancer = nn.Sequential(
             nn.Conv1d(in_channels=4, out_channels=n_filters, kernel_size=(self.kernel_size, ), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 1500
             nn.LeakyReLU(),
             nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 750
             nn.LeakyReLU(),
             nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding),  # Enhancer: B, 128, 375
             nn.LeakyReLU(),
-            # nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,)),
-            # nn.LeakyReLU(),
-            # nn.Conv1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,)),
-            # nn.LeakyReLU(),
-            View((-1, self.conv1d3_length * n_filters)),  # B, 48000
-            nn.Linear(self.conv1d3_length * n_filters, z_dim*2),  # B, z_dim * 2
         )
-        self.decoder = nn.Sequential(
-            nn.Linear(z_dim, self.conv1d3_length * n_filters),  # B, 48000
-            View((-1, n_filters, self.conv1d3_length)),  # B, 128, 375
+
+        self.encoder_linear = nn.Sequential(
+            View((-1, self.encoder_linear_input_size)),  # B, 48000
+            nn.Linear(self.encoder_linear_input_size, linear_units),  # B, z_dim * 2
             nn.LeakyReLU(),
+            nn.Linear(linear_units, int(linear_units / 2)),  # B, z_dim * 2
+            nn.LeakyReLU(),
+            nn.Linear(int(linear_units / 2), int(linear_units / 4)),  # B, z_dim * 2
+            nn.LeakyReLU(),
+            nn.Linear(int(linear_units / 4), z_dim * 2),  # B, z_dim * 2
+        )
+
+        self.decoder_linear = nn.Sequential(
+            nn.Linear(z_dim, int(linear_units / 4)),  # B, 48000
+            nn.LeakyReLU(),
+            nn.Linear(int(linear_units / 4), int(linear_units / 2)),
+            nn.LeakyReLU(),
+            nn.Linear(int(linear_units / 2), linear_units),  # B, z_dim * 2
+            nn.LeakyReLU(),
+            nn.Linear(linear_units, self.encoder_linear_input_size),  # B, z_dim * 2
+            View((-1, n_filters, (self.conv1d3_length_enhancer + self.conv1d3_length_promoter))),  # B, 128, 375
+        )
+
+        self.decoder_conv_promoter = nn.Sequential(
             nn.ConvTranspose1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 128, 750
             nn.LeakyReLU(),
             nn.ConvTranspose1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 128, 1500
             nn.LeakyReLU(),
             nn.ConvTranspose1d(in_channels=n_filters, out_channels=4, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 4, 3000
+        )
 
-            # nn.ConvTranspose2d(256, 64, 4),      # B,  64,  4,  4
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(64, 64, 4, 2, 1), # B,  64,  8,  8
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(64, 32, 4, 2, 1), # B,  32, 16, 16
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(32, 32, 4, 2, 1), # B,  32, 32, 32
-            # nn.ReLU(True),
-            # nn.ConvTranspose2d(32, nc, 4, 2, 1),  # B, nc, 64, 64
+        self.decoder_conv_enhancer = nn.Sequential(
+            nn.ConvTranspose1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 128, 750
+            nn.LeakyReLU(),
+            nn.ConvTranspose1d(in_channels=n_filters, out_channels=n_filters, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 128, 1500
+            nn.LeakyReLU(),
+            nn.ConvTranspose1d(in_channels=n_filters, out_channels=4, kernel_size=(self.kernel_size,), stride=(2,), padding=encoder_padding, output_padding=1),  # Enhancer: B, 4, 3000
         )
 
         self.weight_init()
@@ -81,23 +110,31 @@ class BetaVAE_H(nn.Module):
             for m in self._modules[block]:
                 kaiming_init(m)
 
-    def forward(self, x):
-        distributions = self._encode(x)
+    def forward(self, x_p, x_e):
+        distributions = self._encode(x_p, x_e)
         mu = distributions[:, :self.z_dim]
         logvar = distributions[:, self.z_dim:]
         z = reparametrize(mu, logvar)
-        x_recon = self._decode(z)
+        recon_x_p, recon_x_e = self._decode(z)
 
-        return x_recon, mu, logvar
+        return recon_x_p, recon_x_e, mu, logvar
 
-    def _encode(self, x):
-        return self.encoder(x)
+    def _encode(self, x_p, x_e):
+        encode_conv_x_p = self.encoder_conv_promoter(x_p)
+        encode_conv_x_e = self.encoder_conv_enhancer(x_e)
+        encode_conv_x = torch.cat((encode_conv_x_p, encode_conv_x_e), 2)
+        distribution = self.encoder_linear(encode_conv_x)
+        return distribution
 
     def _decode(self, z):
-        return self.decoder(z)
+        decode_deconv_x = self.decoder_linear(z)
+        decode_deconv_x_p, decode_deconv_x_e = decode_deconv_x[:, :, :self.conv1d3_length_promoter], decode_deconv_x[:, :, self.conv1d3_length_promoter:]
+        recon_x_p = self.decoder_conv_promoter(decode_deconv_x_p)
+        recon_x_e = self.decoder_conv_enhancer(decode_deconv_x_e)
+        return recon_x_p, recon_x_e
 
 
-class BetaVAE_B(BetaVAE_H):
+class BetaVAE_B(BetaVAE_EP):
     """Model proposed in understanding beta-VAE paper(Burgess et al, arxiv:1804.03599, 2018)."""
 
     def __init__(self, z_dim=10, nc=1):

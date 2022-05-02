@@ -7,7 +7,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from AEClassification.AE import AE
-from AEClassification.BetaVAE import BetaVAE_H, BetaVAE_B, InteractionBinaryClassifier
+from AEClassification.BetaVAE import BetaVAE_EP, BetaVAE_B, InteractionBinaryClassifier
 
 warnings.filterwarnings("ignore")
 
@@ -20,13 +20,10 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 
-def reconstruction_loss(x, x_recon, distribution):
-    batch_size = x.size(0)
-    assert batch_size != 0
-
+def reconstruction_loss(x, x_recon, distribution, criterion):
     if distribution == 'gaussian':
         x_recon = F.sigmoid(x_recon)
-        recon_loss = F.mse_loss(x_recon, x, size_average=False).div(batch_size)
+        recon_loss = criterion(x_recon, x)
     else:
         raise NotImplementedError
 
@@ -85,10 +82,8 @@ class Solver(object):
 
         self.decoder_dist = 'gaussian'
 
-        if kwargs['model'] == 'BetaVAE':
-            net = BetaVAE_H
-        elif kwargs['model'] == 'AE':
-            net = AE
+        if kwargs['model'] == 'H':
+            net = BetaVAE_EP
         else:
             raise NotImplementedError('only support model H or B')
 
@@ -100,6 +95,7 @@ class Solver(object):
 
         self.net_1: nn.Module = net(z_dim=self.z_dim, input_length=self.x_1_length).to(self.device)
         self.optim_1 = optim.Adam(self.net_1.parameters(), lr=self.lr)
+        self.recon_criterion = torch.nn.MSELoss()
 
         # self.classifier = InteractionBinaryClassifier(2 * self.z_dim)
 
@@ -114,7 +110,7 @@ class Solver(object):
         for epoch in range(self.max_iter):
             mini_batch_i = 0
             pbar = tqdm(total=math.ceil(len(self.data_loader.dataset) / self.data_loader.batch_size),
-                        desc='Training β-VAE')
+                        desc='Training')
             pbar.update(mini_batch_i)
             batch_recon_losses_0 = []
             batch_total_klds_0 = []
@@ -127,7 +123,7 @@ class Solver(object):
 
                 # enhancer VAE
                 x_0_recon, mu_0, logvar_0 = self.net_0(x_0)
-                recon_loss_0 = reconstruction_loss(x_0, x_0_recon, self.decoder_dist)
+                recon_loss_0 = reconstruction_loss(x_0, x_0_recon, self.decoder_dist, self.recon_criterion)
                 total_kld_0, dim_wise_kld_0, mean_kld_0 = kl_divergence(mu_0, logvar_0)
                 beta_vae_loss_0 = recon_loss_0 + self.beta * total_kld_0
 
@@ -137,7 +133,7 @@ class Solver(object):
 
                 # promotor VAE
                 x_1_recon, mu_1, logvar_1 = self.net_1(x_1)
-                recon_loss_1 = reconstruction_loss(x_1, x_1_recon, self.decoder_dist)
+                recon_loss_1 = reconstruction_loss(x_1, x_1_recon, self.decoder_dist, self.recon_criterion)
                 total_kld_1, dim_wise_kld_1, mean_kld_1 = kl_divergence(mu_1, logvar_1)
                 beta_vae_loss_1 = recon_loss_1 + self.beta * total_kld_1
 
@@ -145,7 +141,7 @@ class Solver(object):
                 beta_vae_loss_1.backward()
                 self.optim_1.step()
 
-                pbar.set_description('[{}] Enhancer: recon_loss:{:.3f} total_kld:{:.5f} , Promoter: recon_loss:{:.3f} total_kld:{:.5f}'.format(
+                pbar.set_description('[{}] Enhancer: recon_loss:{:.5f} total_kld:{:.5f} , Promoter: recon_loss:{:.5f} total_kld:{:.5f}'.format(
                     mini_batch_i, recon_loss_0.item(), total_kld_0.item(), recon_loss_1.item(), total_kld_1.item()))
                 batch_recon_losses_0.append(recon_loss_0.item())
                 batch_total_klds_0.append(total_kld_0.item())

@@ -20,16 +20,18 @@ import h5py
 # import matplotlib.pyplot as plt
 from datetime import datetime
 
+torch.manual_seed(42)
+np.random.seed(42)
 
 model = 'H'
-# cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 # cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
 # cell_lines = ['HUVEC', 'IMR90', 'K562', 'NHEK']
-cell_lines = ['IMR90', 'K562', 'NHEK']
+# cell_lines = ['IMR90', 'K562', 'NHEK']
 
 # Model training parameters
 num_epochs = 60
-batch_size = 256
+batch_size = 64
 training_frac = 0.9  # fraction of data to use for training
 
 t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
@@ -39,8 +41,8 @@ data_path = 'data/all_sequence_data.h5'
 use_cuda = True
 device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
 epochs = 100
-z_dim = 10
-beta = 4
+z_dim = 64
+beta = 2
 lr=1e-3
 train_ratio = 0.9  # fraction of data to use for training
 l1_weight = 1e-5

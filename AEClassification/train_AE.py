@@ -4,13 +4,16 @@ import pickle
 
 import numpy as np
 import torch
-from sklearn.metrics import f1_score
+from torch import nn, optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import torch.nn.functional as F
 
-from AEClassification.AE import AE
+from AEClassification.AECNN import AE_CNN
+from AEClassification.AECRNN import AE_CRNN
+from AEClassification.BetaVAE import BetaVAE_EP
 from AEClassification.EPIDataset import EPIDataset
-from AEClassification.BetaVAESolver import Solver
+from AEClassification.BetaVAESolver import Solver, kl_divergence
 
 np.set_printoptions(suppress=True)  # Suppress scientific notation when printing small
 import h5py
@@ -19,16 +22,20 @@ import h5py
 # import matplotlib.pyplot as plt
 from datetime import datetime
 
+torch.manual_seed(42)
+np.random.seed(42)
 
-model = 'AE'
-# model = 'BetaVAE'
-# cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
-cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+model = 'H'
+cell_lines = ['GM12878', 'HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['HeLa-S3', 'HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['HUVEC', 'IMR90', 'K562', 'NHEK']
+# cell_lines = ['IMR90', 'K562', 'NHEK']
 
 # Model training parameters
-epochs = 3
-batch_size = 100
-train_ratio = 0.9  # fraction of data to use for training
+num_epochs = 60
+batch_size = 512
+
+training_frac = 0.9  # fraction of data to use for training
 
 t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 # opt = Adam(lr=1e-5)  # opt = RMSprop(lr = 1e-6)
@@ -36,11 +43,17 @@ t = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
 data_path = 'data/all_sequence_data.h5'
 use_cuda = True
 device = 'cuda' if use_cuda and torch.cuda.is_available() else 'cpu'
-lr = 1e-3
+epochs = 60
+lr=1e-3
+train_ratio = 0.9  # fraction of data to use for training
+l1_weight = 1e-6
+l2_weight = 1e-6
+recon_criterion = torch.nn.MSELoss()
 
 training_histories = {}
+
 for cell_line in cell_lines:
-    dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda, is_onehot_labels=True)
+    dataset = EPIDataset(data_path, cell_line, use_cuda=use_cuda)
     train_size = int(train_ratio * len(dataset))
     test_size = len(dataset) - train_size
     train_set, val_set = torch.utils.data.random_split(dataset, [train_size, test_size])
@@ -48,74 +61,86 @@ for cell_line in cell_lines:
     train_data_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_data_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
 
-    train_losses = []
-    val_losses = []
+    x_p_length, x_e_length = train_data_loader.dataset[0][0].shape[-1], train_data_loader.dataset[0][1].shape[-1]
+
+    net: nn.Module = AE_CNN(promoter_input_length=x_p_length, enhancer_input_length=x_e_length).to(device)
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
+
+    recon_losses_train = []
+    recon_losses_val = []
     best_loss = np.inf
 
-    net = AE(3000).to(device)
-    optim = torch.optim.Adam(net.parameters(), lr=lr)
-    criteria = torch.nn.MSELoss()
-    print('Training on {} samples, validating on {} samples'.format(len(train_data_loader.dataset),
-                                                                    len(val_data_loader.dataset)))
-    # try:
     for epoch in range(epochs):
-        mini_batch_i = 0
+        mini_batch_i_train = 0
         mini_batch_i_val = 0
-
         pbar = tqdm(total=math.ceil(len(train_data_loader.dataset) / train_data_loader.batch_size),
-                    desc='Training AE Net')
-        pbar.update(mini_batch_i)
-        batch_losses_train = []
+                    desc='Training BetaVAE Net')
+        pbar.update(mini_batch_i_train)
+        batch_recon_losses = []
+        batch_total_klds = []
+
         net.train()
-        for input_p, input_e, y in train_data_loader:
-            mini_batch_i += 1
+        for x_p, x_e, y in train_data_loader:
+            mini_batch_i_train += 1
             pbar.update(1)
 
-            x_recon = net(input_p)
-            loss = criteria(input_p, x_recon)
-            optim.zero_grad()
-            loss.backward()
-            optim.step()
+            x_recon_p, x_recon_e = net(x_p, x_e)
+            l2_penalty = l2_weight * sum([(p ** 2).sum() for p in net.parameters()])
+            recon_loss = recon_criterion(torch.concat([x_p, x_e], dim=2), torch.concat([x_recon_p, x_recon_e], dim=2))
+            beta_vae_loss = recon_loss + l2_penalty
 
-            pbar.set_description('Training [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
-            batch_losses_train.append(loss.item())
-        train_losses.append(np.mean(batch_losses_train))
+            optimizer.zero_grad()
+            beta_vae_loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=1.0)  # gradient clipping to avoid exploding gradient
+            optimizer.step()
+
+            pbar.set_description( 'Training [{}]: recon_loss:{:.8f}'.format( mini_batch_i_train, recon_loss.item()))
+            batch_recon_losses.append(recon_loss.item())
+        recon_losses_train.append(np.mean(batch_recon_losses))
         pbar.close()
 
-        net.eval()
         with torch.no_grad():
             pbar = tqdm(total=math.ceil(len(val_data_loader.dataset) / val_data_loader.batch_size),
                         desc='Validating AE Net')
             pbar.update(mini_batch_i_val)
-            batch_losses_val = []
-            for input_p, input_e, y in val_data_loader:
+            batch_recon_losses = []
+            for x_p, x_e, y in val_data_loader:
                 mini_batch_i_val += 1
                 pbar.update(1)
 
-                x_recon = net(input_p)
-                loss = criteria(input_p, x_recon)
-                batch_losses_val.append(loss.item())
-                pbar.set_description('Validating [{}] loss:{:.5f}'.format(mini_batch_i, loss.item()))
+                x_recon_p, x_recon_e = net(x_p, x_e)
+                recon_loss = recon_criterion(torch.concat([x_p, x_e], dim=2),
+                                             torch.concat([x_recon_p, x_recon_e], dim=2))
+                loss = recon_loss
 
-            val_losses.append(np.mean(batch_losses_val))
+                batch_recon_losses.append(recon_loss.item())
+                pbar.set_description(
+                    'Validating [{}]: recon_loss:{:.8f} '.format(mini_batch_i_train, recon_loss.item()))
+
+            recon_losses_val.append(np.mean(batch_recon_losses))
             pbar.close()
-        print("Epoch {} - train recon loss:{:.5f}, , val recon loss:{:.5f}".format(epoch, np.mean(
-            batch_losses_train), np.mean(batch_losses_val)))
 
-        if np.mean(batch_losses_val) < best_loss:
+
+        print("Epoch {}: train recon loss={:.8f}, val recon loss={:.8f}, "
+              .format(epoch, recon_losses_train[-1],
+                                        recon_losses_val[-1]))
+
+        if recon_losses_val[-1] < best_loss:
             torch.save(net.state_dict(), 'AEClassification/models/net_AE_{}'.format(cell_line))
-            print('Best loss improved from {} to {}, saved best model to {}'.format(best_loss, np.mean(batch_losses_val),
+            print(
+                'Best BetaVAE loss improved from {} to {}, saved best model to {}'.format(best_loss, recon_losses_val[-1],
                                                                                   'AEClassification/models/net_AE_{}'.format(
                                                                                       cell_line)))
-            best_loss = np.mean(batch_losses_val)
+            best_loss = recon_losses_val[-1]
 
         # Save training histories after every epoch
-        training_histories[cell_line] = {'train_losss': train_losses,'val_losses': val_losses}
+        training_histories[cell_line] = {'recon_loss_train': recon_losses_train,
+                                         'recon_loss_val': recon_losses_val}
         pickle.dump(training_histories, open('AEClassification/models/AE_training_histories.pickle', 'wb'))
 
-    # except:
-    #     print('Training terminated for cell line {} because of exception'.format(cell_line))
     print('Training completed for cell line {}, training history saved'.format(cell_line))
+
 
 
 
